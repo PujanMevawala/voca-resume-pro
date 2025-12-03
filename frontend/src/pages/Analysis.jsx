@@ -32,6 +32,8 @@ export default function Analysis() {
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
   const [audioText, setAudioText] = useState('');
   const [speechUtterance, setSpeechUtterance] = useState(null);
+  const [ttsProvider, setTtsProvider] = useState(null);
+  const [audioRef, setAudioRef] = useState(null);
 
   useEffect(() => {
     if (!resumeId) {
@@ -46,6 +48,18 @@ export default function Analysis() {
     }
     loadResumeInfo();
   }, [resumeId, token, navigate]);
+
+  // Cleanup audio URL on unmount
+  useEffect(() => {
+    return () => {
+      if (audioUrl) {
+        URL.revokeObjectURL(audioUrl);
+      }
+      if ('speechSynthesis' in window) {
+        speechSynthesis.cancel();
+      }
+    };
+  }, [audioUrl]);
 
   const loadResumeInfo = async () => {
     try {
@@ -112,27 +126,51 @@ export default function Analysis() {
         return;
       }
 
-      // Store the audio text
+      // Store the audio text for fallback
       setAudioText(scriptData.script);
 
-      // Then, convert script to audio using TTS
-      const audioData = await api.post('/api/audio/synthesize', {
-        text: scriptData.script,
-        voice: 'professional',
-      }, token);
+      // Then, convert script to audio using TTS (Google Cloud TTS or browser fallback)
+      const response = await fetch(`${import.meta.env.VITE_API_BASE || 'http://localhost:3001'}/api/audio/tts`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({ text: scriptData.script, voice: 'en-US' }),
+      });
 
-      console.log('Audio data:', audioData);
+      if (!response.ok) {
+        throw new Error(`TTS failed: ${response.status}`);
+      }
 
-      // Handle browser TTS fallback
-      if (audioData.useBrowserTTS) {
-        toast.success('Audio summary ready - Click play to listen');
-        setActiveTab('summary');
-      } else if (audioData.audioUrl) {
-        setAudioUrl(audioData.audioUrl);
-        toast.success('Audio summary generated!');
+      const contentType = response.headers.get('content-type');
+      const ttsProvider = response.headers.get('x-tts-provider');
+      
+      console.log('TTS Provider:', ttsProvider);
+      console.log('Content-Type:', contentType);
+
+      // Check if we got audio (Google Cloud or OpenAI TTS)
+      if (contentType && contentType.includes('audio')) {
+        const audioBlob = await response.blob();
+        const audioUrl = URL.createObjectURL(audioBlob);
+        setAudioUrl(audioUrl);
+        setTtsProvider(ttsProvider);
+        
+        const providerName = ttsProvider === 'google-cloud' ? '🎙️ Google Cloud TTS' : 
+                            ttsProvider === 'openai' ? '🤖 OpenAI TTS' : 
+                            '🎵 High-Quality TTS';
+        toast.success(`${providerName} - Audio ready!`);
         setActiveTab('summary');
       } else {
-        toast.error('No audio URL received from server');
+        // Browser TTS fallback
+        const data = await response.json();
+        if (data.useBrowserTTS) {
+          setTtsProvider('browser');
+          toast.success('🔊 Audio ready - Using browser speech (Click play to listen)');
+          setActiveTab('summary');
+        } else {
+          toast.error('Unexpected response format');
+        }
       }
     } catch (err) {
       console.error('Audio generation error:', err);
@@ -143,15 +181,18 @@ export default function Analysis() {
   };
 
   const playAudioSummary = () => {
-    if (audioUrl) {
-      // Use HTML5 audio element
-      const audio = document.querySelector('audio');
-      if (audio) {
-        audio.play();
-        setIsPlayingAudio(true);
-      }
+    if (audioUrl && audioRef) {
+      audioRef.play().catch(err => {
+        console.error('Audio play error:', err);
+        toast.error('Failed to play audio');
+      });
+      setIsPlayingAudio(true);
     } else if (audioText && 'speechSynthesis' in window) {
-      // Use Web Speech API
+      // Fallback to Web Speech API for browser TTS
+      if (speechSynthesis.speaking) {
+        speechSynthesis.cancel();
+      }
+      
       const utterance = new SpeechSynthesisUtterance(audioText);
       utterance.rate = 0.9;
       utterance.pitch = 1;
@@ -177,12 +218,9 @@ export default function Analysis() {
   };
 
   const pauseAudioSummary = () => {
-    if (audioUrl) {
-      const audio = document.querySelector('audio');
-      if (audio) {
-        audio.pause();
-        setIsPlayingAudio(false);
-      }
+    if (audioUrl && audioRef) {
+      audioRef.pause();
+      setIsPlayingAudio(false);
     } else if ('speechSynthesis' in window && speechSynthesis.speaking) {
       speechSynthesis.pause();
       setIsPlayingAudio(false);
@@ -190,13 +228,10 @@ export default function Analysis() {
   };
 
   const stopAudioSummary = () => {
-    if (audioUrl) {
-      const audio = document.querySelector('audio');
-      if (audio) {
-        audio.pause();
-        audio.currentTime = 0;
-        setIsPlayingAudio(false);
-      }
+    if (audioUrl && audioRef) {
+      audioRef.pause();
+      audioRef.currentTime = 0;
+      setIsPlayingAudio(false);
     } else if ('speechSynthesis' in window) {
       speechSynthesis.cancel();
       setIsPlayingAudio(false);
@@ -230,7 +265,7 @@ export default function Analysis() {
                 </p>
               </div>
               <Button variant="secondary" onClick={() => navigate('/documents')}>
-                ← Back to Documents
+                ← Back to Docs
               </Button>
             </div>
           </div>
@@ -252,14 +287,11 @@ export default function Analysis() {
             />
             
             <div className="flex items-center gap-4 mt-4 flex-wrap">
-              <select
-                value={selectedModel}
-                onChange={(e) => setSelectedModel(e.target.value)}
-                className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white/50 dark:bg-slate-800/50 backdrop-blur-sm px-4 py-2.5 outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent transition-all"
-                disabled={loading}
-              >
-                {availableModels.map(model => (
-                  <option key={model.id} value={model.id}>{model.name}</option>
+              <select value={selectedModel} onChange={(e) =>  setSelectedModel(e.target.value)} className="px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-xs font-medium focus:ring-2 focus:ring-brand-500 focus:border-transparent transition-all" disabled={loading}>
+                {availableModels.map(model => ( 
+                    <option key={model.id} value={model.id}>  
+                        {model.name}  
+                    </option> 
                 ))}
               </select>
 
@@ -504,99 +536,364 @@ export default function Analysis() {
                   <div>
                     <h2 className="text-2xl font-bold mb-6 text-slate-900 dark:text-slate-100">Audio Summary</h2>
                     {(audioUrl || audioText) ? (
-                      <div className="space-y-4">
-                        <div className="p-8 bg-gradient-to-r from-brand-50 to-purple-50 dark:from-brand-900/20 dark:to-purple-900/20 rounded-xl border border-brand-200 dark:border-brand-800 shadow-lg">
-                          <div className="text-center mb-6">
-                            <div className="text-5xl mb-3 animate-bounce">🎧</div>
-                            <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-2">
-                              Audio Summary Ready
-                            </h3>
-                            <p className="text-slate-700 dark:text-slate-300">
-                              Your analysis summary has been converted to audio
-                            </p>
-                          </div>
+                      <div className="space-y-6">
+                        {/* Premium Audio Player Card */}
+                        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 shadow-2xl">
                           
-                          {audioUrl ? (
-                            <audio controls className="w-full mt-4 rounded-lg">
-                              <source src={audioUrl} type="audio/mpeg" />
-                              Your browser does not support the audio element.
-                            </audio>
-                          ) : (
-                            <div className="mt-6 space-y-4">
-                              {/* Custom Audio Controls */}
-                              <div className="flex items-center justify-center gap-4">
-                                <Button 
-                                  onClick={playAudioSummary} 
-                                  disabled={isPlayingAudio}
-                                  size="lg"
-                                  className="!rounded-full !px-6"
-                                >
-                                  <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
-                                    <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z"/>
-                                  </svg>
-                                  <span className="ml-2">Play</span>
-                                </Button>
-                                
-                                <Button 
-                                  onClick={pauseAudioSummary} 
-                                  disabled={!isPlayingAudio}
-                                  size="lg"
-                                  className="!rounded-full !px-6 !bg-amber-500 hover:!bg-amber-600"
-                                >
-                                  <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
-                                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd"/>
-                                  </svg>
-                                  <span className="ml-2">Pause</span>
-                                </Button>
-                                
-                                <Button 
-                                  onClick={stopAudioSummary}
-                                  size="lg"
-                                  className="!rounded-full !px-6 !bg-red-500 hover:!bg-red-600"
-                                >
-                                  <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
-                                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8 7a1 1 0 00-1 1v4a1 1 0 001 1h4a1 1 0 001-1V8a1 1 0 00-1-1H8z" clipRule="evenodd"/>
-                                  </svg>
-                                  <span className="ml-2">Stop</span>
-                                </Button>
+                          {/* Animated Background */}
+                          <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(99,102,241,0.1),transparent_50%)]"></div>
+                          <div className="absolute inset-0 bg-[radial-gradient(circle_at_80%_20%,rgba(168,85,247,0.1),transparent_40%)]"></div>
+                          <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_80%,rgba(59,130,246,0.1),transparent_40%)]"></div>
+                          
+                          {/* Content */}
+                          <div className="relative p-8 md:p-12">
+                            
+                            {/* Header with Provider Badge */}
+                            <div className="flex flex-col md:flex-row md:items-center justify-between mb-10 gap-4">
+                              <div>
+                                <h3 className="text-2xl md:text-3xl font-bold text-white mb-2 tracking-tight">
+                                  Resume Analysis Audio
+                                </h3>
+                                <p className="text-slate-400 text-sm md:text-base">
+                                  Professional narration of your resume analysis
+                                </p>
                               </div>
-                              
-                              {isPlayingAudio && (
-                                <div className="flex items-center justify-center gap-2 text-slate-600 dark:text-slate-400">
-                                  <svg className="animate-pulse w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                                    <path d="M18 3a1 1 0 00-1.196-.98l-10 2A1 1 0 006 5v9.114A4.369 4.369 0 005 14c-1.657 0-3 .895-3 2s1.343 2 3 2 3-.895 3-2V7.82l8-1.6v5.894A4.37 4.37 0 0015 12c-1.657 0-3 .895-3 2s1.343 2 3 2 3-.895 3-2V3z"/>
-                                  </svg>
-                                  <span className="text-sm font-medium">Playing audio...</span>
+                              {ttsProvider && (
+                                <div className={`inline-flex items-center gap-3 px-5 py-3 rounded-full text-sm font-bold shadow-lg backdrop-blur-sm border ${
+                                  ttsProvider === 'google-cloud' 
+                                    ? 'bg-green-500/20 text-green-300 border-green-500/30' 
+                                    : ttsProvider === 'openai'
+                                    ? 'bg-blue-500/20 text-blue-300 border-blue-500/30'
+                                    : 'bg-orange-500/20 text-orange-300 border-orange-500/30'
+                                }`}>
+                                  <div className="relative flex h-3 w-3">
+                                    <div className="animate-ping absolute inline-flex h-full w-full rounded-full bg-current opacity-75"></div>
+                                    <div className="relative inline-flex rounded-full h-3 w-3 bg-current"></div>
+                                  </div>
+                                  <span>
+                                    {ttsProvider === 'google-cloud' && 'Google Cloud Neural2'}
+                                    {ttsProvider === 'openai' && 'OpenAI TTS'}
+                                    {ttsProvider === 'browser' && 'Browser Speech'}
+                                  </span>
                                 </div>
                               )}
                             </div>
-                          )}
+
+                            {/* Audio Player Section */}
+                            {audioUrl ? (
+                              <div className="space-y-6">
+                                
+                                {/* Hidden Audio Element */}
+                                <audio 
+                                  ref={(el) => setAudioRef(el)}
+                                  src={audioUrl}
+                                  onPlay={() => setIsPlayingAudio(true)}
+                                  onPause={() => setIsPlayingAudio(false)}
+                                  onEnded={() => setIsPlayingAudio(false)}
+                                  onTimeUpdate={(e) => {
+                                    const progress = (e.target.currentTime / e.target.duration) * 100;
+                                    const progressBar = document.getElementById('audio-progress');
+                                    if (progressBar) progressBar.style.width = `${progress}%`;
+                                  }}
+                                  className="hidden"
+                                />
+                                
+                                {/* Custom Audio Player */}
+                                <div className="relative bg-gradient-to-br from-slate-800/80 to-slate-900/80 backdrop-blur-xl rounded-3xl p-8 border-2 border-slate-700/80 shadow-2xl overflow-hidden">
+                                  
+                                  {/* Glow Effects */}
+                                  <div className="absolute -inset-1 bg-gradient-to-r from-brand-500 via-purple-500 to-pink-500 rounded-3xl blur-3xl opacity-20"></div>
+                                  <div className="absolute inset-0 bg-gradient-to-br from-brand-500/5 via-transparent to-purple-500/5"></div>
+                                  
+                                  {/* Waveform Visualization */}
+                                  <div className="relative mb-6 bg-slate-900/40 rounded-2xl p-6 border border-slate-700/50">
+                                    <div className="flex items-center justify-center gap-1 h-16">
+                                      {[...Array(50)].map((_, i) => (
+                                        <div
+                                          key={i}
+                                          className={`w-1 rounded-full transition-all duration-300 ${
+                                            isPlayingAudio 
+                                              ? 'bg-gradient-to-t from-brand-600 via-purple-500 to-pink-500' 
+                                              : 'bg-slate-600'
+                                          }`}
+                                          style={{
+                                            height: `${Math.random() * 60 + 20}%`,
+                                            animation: isPlayingAudio ? `pulse ${Math.random() * 0.5 + 0.5}s ease-in-out infinite` : 'none',
+                                            animationDelay: `${i * 0.02}s`
+                                          }}
+                                        />
+                                      ))}
+                                    </div>
+                                  </div>
+                                  
+                                  {/* Control Panel */}
+                                  <div className="relative flex items-center gap-6 px-4">
+                                    
+                                    {/* Play/Pause Button */}
+                                    <button
+                                      onClick={() => {
+                                        if (audioRef) {
+                                          if (isPlayingAudio) {
+                                            audioRef.pause();
+                                          } else {
+                                            audioRef.play().catch(err => {
+                                              console.error('Play error:', err);
+                                              toast.error('Failed to play audio');
+                                            });
+                                          }
+                                        }
+                                      }}
+                                      className="relative flex-shrink-0 w-16 h-16 rounded-full bg-gradient-to-br from-brand-500 to-purple-600 hover:from-brand-600 hover:to-purple-700 shadow-xl hover:shadow-2xl transition-all duration-300 flex items-center justify-center group border-2 border-white/20"
+                                    >
+                                      <div className="absolute inset-0 rounded-full bg-gradient-to-br from-white/20 to-transparent"></div>
+                                      {isPlayingAudio ? (
+                                        <svg className="w-7 h-7 text-white relative z-10" fill="currentColor" viewBox="0 0 24 24">
+                                          <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z"/>
+                                        </svg>
+                                      ) : (
+                                        <svg className="w-7 h-7 text-white relative z-10 ml-1" fill="currentColor" viewBox="0 0 24 24">
+                                          <path d="M8 5v14l11-7z"/>
+                                        </svg>
+                                      )}
+                                    </button>
+                                    
+                                    {/* Progress Bar and Time */}
+                                    <div className="flex-1 space-y-2">
+                                      {/* Time Display */}
+                                      <div className="flex items-center justify-between text-sm text-slate-400 font-medium">
+                                        <span id="current-time">
+                                          {audioRef && !isNaN(audioRef.duration) 
+                                            ? `${Math.floor(audioRef.currentTime / 60)}:${String(Math.floor(audioRef.currentTime % 60)).padStart(2, '0')}`
+                                            : '0:00'
+                                          }
+                                        </span>
+                                        <span id="total-time">
+                                          {audioRef && !isNaN(audioRef.duration)
+                                            ? `${Math.floor(audioRef.duration / 60)}:${String(Math.floor(audioRef.duration % 60)).padStart(2, '0')}`
+                                            : '0:00'
+                                          }
+                                        </span>
+                                      </div>
+                                      
+                                      {/* Progress Bar */}
+                                      <div 
+                                        className="relative h-2 bg-slate-700/50 rounded-full cursor-pointer overflow-hidden border border-slate-600/50"
+                                        onClick={(e) => {
+                                          if (audioRef && !isNaN(audioRef.duration)) {
+                                            const rect = e.currentTarget.getBoundingClientRect();
+                                            const percent = (e.clientX - rect.left) / rect.width;
+                                            audioRef.currentTime = percent * audioRef.duration;
+                                          }
+                                        }}
+                                      >
+                                        <div 
+                                          id="audio-progress"
+                                          className="absolute left-0 top-0 h-full bg-gradient-to-r from-brand-500 via-purple-500 to-pink-500 rounded-full transition-all duration-100"
+                                          style={{ width: '0%' }}
+                                        >
+                                          <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full shadow-lg"></div>
+                                        </div>
+                                      </div>
+                                    </div>
+                                    
+                                    {/* Volume Control */}
+                                    <div className="flex items-center gap-3 flex-shrink-0">
+                                      <button
+                                        onClick={() => {
+                                          if (audioRef) {
+                                            audioRef.muted = !audioRef.muted;
+                                          }
+                                        }}
+                                        className="w-12 h-12 rounded-full bg-slate-800/60 hover:bg-slate-700/80 border-2 border-slate-600/50 hover:border-brand-500/50 transition-all duration-300 flex items-center justify-center"
+                                      >
+                                        <svg className="w-5 h-5 text-slate-300" fill="currentColor" viewBox="0 0 24 24">
+                                          <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/>
+                                        </svg>
+                                      </button>
+                                      
+                                      <input
+                                        type="range"
+                                        min="0"
+                                        max="100"
+                                        defaultValue="100"
+                                        onChange={(e) => {
+                                          if (audioRef) {
+                                            audioRef.volume = e.target.value / 100;
+                                          }
+                                        }}
+                                        className="w-24 h-2 bg-slate-700/50 rounded-full appearance-none cursor-pointer border border-slate-600/50"
+                                        style={{
+                                          background: 'linear-gradient(to right, rgb(99 102 241) 0%, rgb(168 85 247) 100%)',
+                                        }}
+                                      />
+                                    </div>
+                                    
+                                  </div>
+                                  
+                                  {/* Visualizer Bar */}
+                                
+                                </div>
+                                
+                                {/* Status Card */}
+                                {isPlayingAudio && (
+                                  <div className="flex items-center justify-center gap-4 p-4 bg-gradient-to-r from-brand-500/10 via-purple-500/10 to-pink-500/10 rounded-xl border border-brand-500/20">
+                                    <div className="relative flex h-3 w-3">
+                                      <div className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></div>
+                                      <div className="relative inline-flex rounded-full h-3 w-3 bg-green-500"></div>
+                                    </div>
+                                    <span className="text-slate-300 font-semibold text-sm tracking-wide">
+                                      NOW PLAYING
+                                    </span>
+                                  </div>
+                                )}
+                                
+                                {/* Info Cards */}
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-8">
+                                  <div className="p-4 bg-slate-800/50 backdrop-blur-sm rounded-xl border border-slate-700/50">
+                                    <div className="text-brand-400 text-xs font-bold uppercase tracking-wider mb-2">Audio Format</div>
+                                    <div className="text-white font-semibold">MP3 • 24kHz</div>
+                                  </div>
+                                  <div className="p-4 bg-slate-800/50 backdrop-blur-sm rounded-xl border border-slate-700/50">
+                                    <div className="text-purple-400 text-xs font-bold uppercase tracking-wider mb-2">Voice Quality</div>
+                                    <div className="text-white font-semibold">
+                                      {ttsProvider === 'google-cloud' ? 'Neural2 Premium' : 'Standard'}
+                                    </div>
+                                  </div>
+                                  <div className="p-4 bg-slate-800/50 backdrop-blur-sm rounded-xl border border-slate-700/50">
+                                    <div className="text-pink-400 text-xs font-bold uppercase tracking-wider mb-2">Playback</div>
+                                    <div className="text-white font-semibold">Full Controls</div>
+                                  </div>
+                                </div>
+                                
+                              </div>
+                            ) : (
+                              /* Browser TTS Fallback */
+                              <div className="space-y-6">
+                                <div className="p-8 bg-gradient-to-br from-orange-500/10 to-amber-500/10 backdrop-blur-sm rounded-2xl border border-orange-500/30">
+                                  
+                                  <div className="text-center mb-8">
+                                    <div className="inline-flex items-center gap-3 px-5 py-3 bg-orange-500/20 rounded-full mb-4 border border-orange-500/30">
+                                      <div className="relative flex h-3 w-3">
+                                        <div className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></div>
+                                        <div className="relative inline-flex rounded-full h-3 w-3 bg-orange-500"></div>
+                                      </div>
+                                      <span className="text-sm font-bold text-orange-300 uppercase tracking-wider">
+                                        Browser Speech Mode
+                                      </span>
+                                    </div>
+                                    <p className="text-slate-300 text-sm max-w-md mx-auto">
+                                      Using your browser's text-to-speech engine
+                                    </p>
+                                  </div>
+                                  
+                                  <div className="flex flex-wrap items-center justify-center gap-4">
+                                    {!isPlayingAudio ? (
+                                      <button
+                                        onClick={playAudioSummary}
+                                        className="group relative px-12 py-5 bg-gradient-to-r from-orange-500 to-amber-600 hover:from-orange-600 hover:to-amber-700 text-white font-bold rounded-2xl shadow-2xl transform hover:scale-105 active:scale-95 transition-all duration-300 overflow-hidden"
+                                      >
+                                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000"></div>
+                                        <span className="relative text-lg tracking-wide">Play Audio</span>
+                                      </button>
+                                    ) : (
+                                      <>
+                                        <button
+                                          onClick={pauseAudioSummary}
+                                          className="px-10 py-4 bg-gradient-to-r from-amber-500 to-yellow-600 hover:from-amber-600 hover:to-yellow-700 text-white font-bold rounded-xl shadow-xl transform hover:scale-105 active:scale-95 transition-all duration-200"
+                                        >
+                                          Pause
+                                        </button>
+                                        <button
+                                          onClick={stopAudioSummary}
+                                          className="px-10 py-4 bg-gradient-to-r from-red-500 to-rose-600 hover:from-red-600 hover:to-rose-700 text-white font-bold rounded-xl shadow-xl transform hover:scale-105 active:scale-95 transition-all duration-200"
+                                        >
+                                          Stop
+                                        </button>
+                                      </>
+                                    )}
+                                  </div>
+                                  
+                                  {isPlayingAudio && (
+                                    <div className="mt-8 flex items-center justify-center gap-1.5">
+                                      {[...Array(20)].map((_, i) => (
+                                        <div
+                                          key={i}
+                                          className="w-1 bg-gradient-to-t from-orange-600 via-amber-500 to-yellow-500 rounded-full"
+                                          style={{
+                                            height: `${Math.random() * 24 + 8}px`,
+                                            animation: `pulse ${Math.random() * 0.5 + 0.5}s ease-in-out infinite`,
+                                            animationDelay: `${i * 0.05}s`
+                                          }}
+                                        ></div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                            
+                            {/* Tips Section */}
+                            <div className="mt-8 p-6 bg-slate-800/30 backdrop-blur-sm rounded-xl border border-slate-700/50">
+                              <div className="flex items-start gap-3">
+                                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-brand-500/20 flex items-center justify-center border border-brand-500/30">
+                                  <span className="text-brand-400 text-sm font-bold">i</span>
+                                </div>
+                                <div className="flex-1">
+                                  <h4 className="text-white font-semibold mb-2">Playback Tips</h4>
+                                  <ul className="text-slate-400 text-sm space-y-1.5">
+                                    <li>• Use the timeline to skip to any part of the audio</li>
+                                    <li>• Adjust volume with the slider or use keyboard controls</li>
+                                    <li>• Audio will automatically pause when you switch tabs</li>
+                                  </ul>
+                                </div>
+                              </div>
+                            </div>
+                            
+                          </div>
                         </div>
                       </div>
                     ) : (
-                      <div className="text-center py-16 px-6 bg-slate-50 dark:bg-slate-900/20 rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-700">
-                        <div className="text-7xl mb-6">🔊</div>
-                        <h3 className="text-xl font-semibold text-slate-900 dark:text-slate-100 mb-2">
-                          No Audio Summary Yet
-                        </h3>
-                        <p className="text-slate-600 dark:text-slate-400 mb-6 max-w-md mx-auto">
-                          Generate an audio summary of your resume analysis to listen on-the-go
-                        </p>
-                        <Button onClick={generateAudioSummary} disabled={generatingAudio || !analysis} size="lg">
-                          {generatingAudio ? (
-                            <>
-                              <svg className="animate-spin h-5 w-5 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                              </svg>
-                              Generating Audio...
-                            </>
-                          ) : (
-                            <>
-                              🎙️ Generate Audio Summary
-                            </>
-                          )}
-                        </Button>
+                      <div className="relative overflow-hidden">
+                        <div className="absolute inset-0 bg-gradient-to-br from-brand-50 via-purple-50 to-pink-50 dark:from-brand-950 dark:via-purple-950 dark:to-pink-950 opacity-50"></div>
+                        <div className="relative text-center py-20 px-8 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm rounded-2xl border-2 border-dashed border-brand-200 dark:border-brand-800">
+                          <div className="inline-flex items-center justify-center w-24 h-24 bg-gradient-to-br from-brand-100 to-purple-100 dark:from-brand-900 dark:to-purple-900 rounded-full mb-6">
+                            <svg className="w-12 h-12 text-brand-600 dark:text-brand-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                            </svg>
+                          </div>
+                          <h3 className="text-2xl font-bold text-slate-900 dark:text-slate-100 mb-3">
+                            Create Audio Summary
+                          </h3>
+                          <p className="text-slate-600 dark:text-slate-400 mb-8 max-w-lg mx-auto">
+                            Convert your resume analysis into a professional audio narration. Perfect for reviewing on-the-go or multitasking.
+                          </p>
+                          
+                          <Button 
+                            onClick={generateAudioSummary} 
+                            disabled={generatingAudio || !analysis} 
+                            size="lg"
+                            className="!px-8 !py-4 !text-lg !rounded-xl shadow-lg hover:shadow-xl transition-all"
+                          >
+                            {generatingAudio ? (
+                              <>
+                                <svg className="animate-spin h-5 w-5 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                                Generating Audio...
+                              </>
+                            ) : (
+                              '🎙️ Generate Audio Summary'
+                            )}
+                          </Button>
+                          
+                          <div className="mt-6 flex items-center justify-center gap-2 text-sm text-slate-500 dark:text-slate-400">
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            <span>Uses Google Cloud TTS for high-quality audio</span>
+                          </div>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -608,12 +905,11 @@ export default function Analysis() {
           {/* No Analysis State */}
           {!analysis && !loading && (
             <div className="glass rounded-2xl p-12 text-center border border-white/20">
-              <div className="text-6xl mb-4">📊</div>
               <h3 className="text-xl font-semibold mb-2 text-slate-700 dark:text-slate-300">
                 Ready to Analyze
               </h3>
               <p className="text-slate-600 dark:text-slate-400">
-                Enter a job description above and click "Run Complete Analysis" to get started
+                Enter a job description above and click "Analyze Resume" to get started
               </p>
             </div>
           )}

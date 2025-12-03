@@ -147,21 +147,28 @@ export default function Chat() {
                 <div className="max-w-6xl mx-auto pt-14 px-4 pb-4">
                     <div className="flex flex-col h-[calc(100vh-8rem)]">
                         {/* Header */}
-                        <div className="mb-4">
+                        <div className="glass rounded-2xl p-4 mb-4 border border-slate-200 dark:border-slate-700">
                             <div className="flex items-center justify-between flex-wrap gap-3">
-                                <div>
-                                    <h1 className="text-2xl font-bold bg-gradient-to-r from-brand-500 to-purple-500 bg-clip-text text-transparent">
-                                        AI Chat Assistant
-                                    </h1>
-                                    <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
-                                        {resumeInfo?.filename || 'Loading...'}
-                                    </p>
+                                <div className="flex items-center gap-4">
+                                    <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-brand-500 to-purple-600 flex items-center justify-center shadow-lg">
+                                        <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+                                        </svg>
+                                    </div>
+                                    <div>
+                                        <h1 className="text-xl font-bold text-slate-900 dark:text-slate-100">
+                                            AI Chat Assistant
+                                        </h1>
+                                        <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">
+                                            {resumeInfo?.filename || 'Loading...'}
+                                        </p>
+                                    </div>
                                 </div>
                                 <div className="flex items-center gap-3">
                                     <select
                                         value={selectedModel}
                                         onChange={(e) => setSelectedModel(e.target.value)}
-                                        className="px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-sm focus:ring-2 focus:ring-brand-500"
+                                        className="px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-xs font-medium focus:ring-2 focus:ring-brand-500 focus:border-transparent transition-all"
                                         disabled={loading || processing}
                                     >
                                         {availableModels.map(model => (
@@ -172,9 +179,10 @@ export default function Chat() {
                                     </select>
                                     <Button
                                         variant="secondary"
+                                        size="sm"
                                         onClick={() => navigate('/documents')}
                                     >
-                                        ← Back
+                                        ← Back to Docs
                                     </Button>
                                 </div>
                             </div>
@@ -198,54 +206,86 @@ export default function Chat() {
                         )}
 
                         {/* Chat Messages */}
-                        <div className="glass rounded-xl flex-1 overflow-hidden flex flex-col">
-                            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                        <div className="glass rounded-2xl flex-1 overflow-hidden flex flex-col border border-slate-200 dark:border-slate-700 shadow-xl">
+                            <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-slate-50/50 dark:bg-slate-900/50">
                                 {messages.length === 0 && !processing && (
-                                    <div className="text-center py-12">
-                                        <div className="text-5xl mb-4">💬</div>
-                                        <h3 className="text-lg font-semibold mb-2 text-slate-700 dark:text-slate-300">
-                                            Start a conversation
-                                        </h3>
-                                        <p className="text-sm text-slate-600 dark:text-slate-400">
-                                            Ask questions about your resume and get AI-powered insights
-                                        </p>
+                                    <div className="flex items-center justify-center h-full">
+                                        <div className="text-center py-12 px-6 max-w-md">
+                                            <div className="w-20 h-20 mx-auto mb-6 rounded-2xl bg-gradient-to-br from-brand-500/20 to-purple-500/20 flex items-center justify-center">
+                                                <svg className="w-10 h-10 text-brand-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                                                </svg>
+                                            </div>
+                                            <h3 className="text-lg font-bold mb-2 text-slate-900 dark:text-slate-100">
+                                                Start a Conversation
+                                            </h3>
+                                            <p className="text-sm text-slate-600 dark:text-slate-400">
+                                                Ask questions about your resume and get AI-powered insights instantly
+                                            </p>
+                                        </div>
                                     </div>
                                 )}
 
                                 {messages.map((msg, idx) => (
                                     <div
                                         key={idx}
-                                        className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                                        className={`flex items-start gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}
                                     >
-                                        <div
-                                            className={`max-w-[80%] rounded-2xl px-4 py-3 ${
-                                                msg.role === 'user'
-                                                    ? 'bg-brand-600 text-white'
-                                                    : 'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100'
-                                            }`}
-                                        >
-                                            <p className="whitespace-pre-wrap break-words">{msg.content}</p>
-                                            {msg.sources && msg.sources.length > 0 && (
-                                                <div className="mt-2 pt-2 border-t border-slate-300 dark:border-slate-600">
-                                                    <p className="text-xs opacity-75">
-                                                        📚 Sources: {msg.sources.length} document chunks
-                                                    </p>
-                                                </div>
+                                        {/* Avatar */}
+                                        <div className={`flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center ${
+                                            msg.role === 'user'
+                                                ? 'bg-gradient-to-br from-brand-500 to-purple-600'
+                                                : 'bg-gradient-to-br from-slate-600 to-slate-700 dark:from-slate-700 dark:to-slate-800'
+                                        }`}>
+                                            {msg.role === 'user' ? (
+                                                <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 24 24">
+                                                    <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+                                                </svg>
+                                            ) : (
+                                                <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 24 24">
+                                                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17h-2v-2h2v2zm2.07-7.75l-.9.92C13.45 12.9 13 13.5 13 15h-2v-.5c0-1.1.45-2.1 1.17-2.83l1.24-1.26c.37-.36.59-.86.59-1.41 0-1.1-.9-2-2-2s-2 .9-2 2H8c0-2.21 1.79-4 4-4s4 1.79 4 4c0 .88-.36 1.68-.93 2.25z"/>
+                                                </svg>
                                             )}
-                                            <p className="text-xs mt-1 opacity-70">
-                                                {new Date(msg.timestamp).toLocaleTimeString()}
+                                        </div>
+                                        
+                                        {/* Message Bubble */}
+                                        <div className={`flex-1 max-w-[75%] ${msg.role === 'user' ? 'text-right' : 'text-left'}`}>
+                                            <div className={`inline-block rounded-2xl px-4 py-3 shadow-sm ${
+                                                msg.role === 'user'
+                                                    ? 'bg-gradient-to-br from-brand-500 to-brand-600 text-white'
+                                                    : 'bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 border border-slate-200 dark:border-slate-700'
+                                            }`}>
+                                                <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">{msg.content}</p>
+                                                {msg.sources && msg.sources.length > 0 && (
+                                                    <div className="mt-3 pt-3 border-t border-slate-300 dark:border-slate-600">
+                                                        <div className="flex items-center gap-2 text-xs opacity-75">
+                                                            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                                                                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+                                                            </svg>
+                                                            <span>{msg.sources.length} sources referenced</span>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5 px-2">
+                                                {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                             </p>
                                         </div>
                                     </div>
                                 ))}
 
                                 {loading && (
-                                    <div className="flex justify-start">
-                                        <div className="bg-slate-100 dark:bg-slate-800 rounded-2xl px-4 py-3">
+                                    <div className="flex items-start gap-3">
+                                        <div className="flex-shrink-0 w-10 h-10 rounded-xl bg-gradient-to-br from-slate-600 to-slate-700 dark:from-slate-700 dark:to-slate-800 flex items-center justify-center">
+                                            <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 24 24">
+                                                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17h-2v-2h2v2zm2.07-7.75l-.9.92C13.45 12.9 13 13.5 13 15h-2v-.5c0-1.1.45-2.1 1.17-2.83l1.24-1.26c.37-.36.59-.86.59-1.41 0-1.1-.9-2-2-2s-2 .9-2 2H8c0-2.21 1.79-4 4-4s4 1.79 4 4c0 .88-.36 1.68-.93 2.25z"/>
+                                            </svg>
+                                        </div>
+                                        <div className="bg-white dark:bg-slate-800 rounded-2xl px-4 py-3 shadow-sm border border-slate-200 dark:border-slate-700">
                                             <div className="flex items-center gap-2">
-                                                <div className="animate-bounce">●</div>
-                                                <div className="animate-bounce delay-100">●</div>
-                                                <div className="animate-bounce delay-200">●</div>
+                                                <div className="w-2 h-2 rounded-full bg-brand-500 animate-bounce"></div>
+                                                <div className="w-2 h-2 rounded-full bg-brand-500 animate-bounce" style={{animationDelay: '0.1s'}}></div>
+                                                <div className="w-2 h-2 rounded-full bg-brand-500 animate-bounce" style={{animationDelay: '0.2s'}}></div>
                                             </div>
                                         </div>
                                     </div>
@@ -255,23 +295,30 @@ export default function Chat() {
                             </div>
 
                             {/* Input Form */}
-                            <div className="border-t border-slate-200 dark:border-slate-700 p-4">
-                                <form onSubmit={sendMessage} className="flex gap-2">
-                                    <input
-                                        type="text"
-                                        value={input}
-                                        onChange={(e) => setInput(e.target.value)}
-                                        placeholder={processing ? 'Please wait...' : 'Ask a query...'}
-                                        disabled={loading || processing}
-                                        className="flex-1 px-4 py-3 border border-slate-300 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-brand-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
-                                    />
-                                    <Button
+                            <div className="border-t border-slate-200 dark:border-slate-700 p-4 bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm">
+                                <form onSubmit={sendMessage} className="flex items-center gap-3">
+                                    <div className="flex-1 relative">
+                                        <input
+                                            type="text"
+                                            value={input}
+                                            onChange={(e) => setInput(e.target.value)}
+                                            placeholder={processing ? 'Please wait...' : 'Type your message...'}
+                                            disabled={loading || processing}
+                                            className="w-full pl-4 pr-12 py-3.5 border-2 border-slate-300 dark:border-slate-600 rounded-2xl bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder:text-slate-500 dark:placeholder:text-slate-400 focus:ring-2 focus:ring-brand-500 focus:border-brand-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all text-sm"
+                                        />
+                                        <div className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400">
+                                            {input.length}/500
+                                        </div>
+                                    </div>
+                                    <button
                                         type="submit"
                                         disabled={loading || processing || !input.trim()}
-                                        size="md"
+                                        className="flex-shrink-0 w-12 h-12 rounded-xl bg-gradient-to-br from-brand-500 to-brand-600 hover:from-brand-600 hover:to-brand-700 disabled:from-slate-400 disabled:to-slate-500 text-white shadow-lg hover:shadow-xl disabled:shadow-none transition-all duration-200 flex items-center justify-center group disabled:cursor-not-allowed"
                                     >
-                                        {loading ? '⏳' : '📤'} Send
-                                    </Button>
+                                        <svg className="w-5 h-5 transform group-hover:translate-x-0.5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                                        </svg>
+                                    </button>
                                 </form>
                             </div>
                         </div>

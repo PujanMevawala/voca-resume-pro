@@ -6,10 +6,17 @@ import { promisify } from 'util';
 let ttsClient = null;
 try {
     if (process.env.GOOGLE_CLOUD_PROJECT_ID || process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+        console.log('🔧 Initializing Google Cloud TTS...');
+        console.log('   Project ID:', process.env.GOOGLE_CLOUD_PROJECT_ID);
+        console.log('   Credentials path:', process.env.GOOGLE_APPLICATION_CREDENTIALS);
         ttsClient = new textToSpeech.TextToSpeechClient();
+        console.log('✅ Google Cloud TTS initialized successfully!');
+    } else {
+        console.log('⚠️  No Google Cloud credentials found');
     }
 } catch (err) {
-    console.warn('Google Cloud TTS not configured, will use browser fallback');
+    console.error('❌ Google Cloud TTS initialization failed:', err.message);
+    console.warn('   Will use browser fallback');
 }
 
 export async function audioRoutes(app) {
@@ -26,7 +33,6 @@ export async function audioRoutes(app) {
                     voice: {
                         languageCode: voice.includes('-') ? voice : 'en-US',
                         name: voice.includes('-') ? `${voice}-Neural2-C` : 'en-US-Neural2-C',
-                        ssmlGender: 'NEUTRAL',
                     },
                     audioConfig: {
                         audioEncoding: 'MP3',
@@ -40,10 +46,13 @@ export async function audioRoutes(app) {
                 if (response.audioContent) {
                     reply.header('Content-Type', 'audio/mpeg');
                     reply.header('X-TTS-Provider', 'google-cloud');
+                    console.log('✅ Google Cloud TTS: Returning audio (' + response.audioContent.length + ' bytes)');
                     return reply.send(Buffer.from(response.audioContent));
                 }
             } catch (error) {
-                app.log.error('Google Cloud TTS error:', error.message);
+                console.error('❌ Google Cloud TTS error (synthesize endpoint):', error.message);
+                console.error('   Error details:', error);
+                app.log.error('Google Cloud TTS error:', error);
                 // Fall through to next option
             }
         }
@@ -97,7 +106,6 @@ export async function audioRoutes(app) {
                     voice: {
                         languageCode: voice.includes('-') ? voice : 'en-US',
                         name: voice.includes('-') ? `${voice}-Neural2-C` : 'en-US-Neural2-C',
-                        ssmlGender: 'NEUTRAL',
                     },
                     audioConfig: {
                         audioEncoding: 'MP3',

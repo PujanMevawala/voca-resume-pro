@@ -30,8 +30,10 @@ export default function Upload({ token, setResumeId }) {
   };
 
   return (
-    <AnimatedPage>
-      <div className="max-w-2xl mx-auto pt-14 space-y-4">
+    <div className="app-background">
+      <div className="absolute inset-0 bg-grid-slate bg-grid-16 opacity-30 dark:opacity-10 pointer-events-none" />
+      <AnimatedPage>
+        <div className="max-w-2xl mx-auto pt-14 space-y-4">
         <Card>
           <h2 className="text-xl font-semibold">Upload your resume</h2>
           <p className="text-sm text-slate-600 dark:text-slate-300">PDF or TXT works best.</p>
@@ -44,6 +46,7 @@ export default function Upload({ token, setResumeId }) {
           </div>
         </Card>
       </div>
-    </AnimatedPage>
+      </AnimatedPage>
+    </div>
   );
 }

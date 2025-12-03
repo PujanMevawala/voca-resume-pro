@@ -26,8 +26,10 @@ export default function Ask({ token, resumeId }) {
   };
 
   return (
-    <AnimatedPage>
-      <div className="max-w-3xl mx-auto pt-14 space-y-4">
+    <div className="app-background">
+      <div className="absolute inset-0 bg-grid-slate bg-grid-16 opacity-30 dark:opacity-10 pointer-events-none" />
+      <AnimatedPage>
+        <div className="max-w-3xl mx-auto pt-14 space-y-4">
         <Card>
           <h2 className="text-xl font-semibold">Ask a question</h2>
           <p className="text-sm text-slate-600 dark:text-slate-400">Ask anything about your resume - get AI-powered answers instantly.</p>
@@ -54,6 +56,7 @@ export default function Ask({ token, resumeId }) {
           </Card>
         )}
       </div>
-    </AnimatedPage>
+      </AnimatedPage>
+    </div>
   );
 }

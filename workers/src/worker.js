@@ -7,7 +7,7 @@ import pdf from 'pdf-parse';
 import mammoth from 'mammoth';
 import { v4 as uuidv4 } from 'uuid';
 // import { embedText } from '@voca/embedder';
-import { answerQuestion } from '@voca/llm-runtime';
+// import { answerQuestion } from '@voca/llm-runtime';
 
 // Bypass embedText to avoid sharp dependency issues
 function embedText(text) {

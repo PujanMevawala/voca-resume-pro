@@ -15,6 +15,7 @@
     "@fastify/multipart": "^8.3.0",
     "@fastify/rate-limit": "^8.0.0",
     "@fastify/websocket": "^10.0.1",
+    "@google-cloud/text-to-speech": "^6.4.0",
     "@qdrant/js-client-rest": "^1.8.2",
     "argon2": "^0.31.2",
     "axios": "^1.7.7",

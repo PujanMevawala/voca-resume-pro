@@ -44,8 +44,10 @@ export default function Summary({ token, resumeId }) {
   };
 
   return (
-    <AnimatedPage>
-      <div className="max-w-3xl mx-auto pt-14 space-y-4">
+    <div className="app-background">
+      <div className="absolute inset-0 bg-grid-slate bg-grid-16 opacity-30 dark:opacity-10 pointer-events-none" />
+      <AnimatedPage>
+        <div className="max-w-3xl mx-auto pt-14 space-y-4">
         <Card>
           <div className="flex items-center justify-between">
             <h2 className="text-xl font-semibold">Summary</h2>
@@ -60,6 +62,7 @@ export default function Summary({ token, resumeId }) {
           </div>
         </Card>
       </div>
-    </AnimatedPage>
+      </AnimatedPage>
+    </div>
   );
 }

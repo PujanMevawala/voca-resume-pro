@@ -136,8 +136,10 @@ export default function Audio({ token }) {
   };
 
   return (
-    <AnimatedPage>
-      <div className="max-w-3xl mx-auto pt-14 grid gap-4">
+    <div className="app-background">
+      <div className="absolute inset-0 bg-grid-slate bg-grid-16 opacity-30 dark:opacity-10 pointer-events-none" />
+      <AnimatedPage>
+        <div className="max-w-3xl mx-auto pt-14 grid gap-4">
         <Card>
           <h2 className="text-xl font-semibold">Text to Speech</h2>
           <textarea
@@ -161,6 +163,7 @@ export default function Audio({ token }) {
           <p className="text-xs text-slate-500 mt-2">Your recording is transcribed via the backend when you stop.</p>
         </Card>
       </div>
-    </AnimatedPage>
+      </AnimatedPage>
+    </div>
   );
 }

@@ -187,6 +187,7 @@ export default function Documents() {
 
     return (
         <div className="app-background relative overflow-hidden">
+            <div className="absolute inset-0 bg-grid-slate bg-grid-16 opacity-30 dark:opacity-10 pointer-events-none" />
             <AnimatedBackground />
             <AnimatedPage>
                 <div className="max-w-7xl mx-auto pt-14 px-4 pb-20 relative z-10">
@@ -200,7 +201,7 @@ export default function Documents() {
                             </Badge>
                         </div>
                         <p className="text-slate-600 dark:text-slate-300 mt-2 text-lg">
-                            📋 Manage your resumes and start AI-powered analysis
+                            Manage your resumes and start AI-powered analysis
                         </p>
                     </div>
 
