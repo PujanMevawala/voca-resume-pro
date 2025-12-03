@@ -58,9 +58,6 @@ export default function Login({ setToken }) {
         <div className="w-full max-w-md mx-auto px-4">
           {/* Logo/Brand Section */}
           <div className="text-center mb-8">
-            <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-brand-500 to-purple-600 mb-4 shadow-lg shadow-brand-500/20">
-              <span className="text-3xl font-bold text-white">V</span>
-            </div>
             <h1 className="text-3xl font-bold bg-gradient-to-r from-brand-500 to-purple-600 bg-clip-text text-transparent">
               VocaResume
             </h1>
@@ -171,34 +168,16 @@ export default function Login({ setToken }) {
                     {mode === 'login' ? (
                       <>
                         Sign in
-                        <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
-                        </svg>
                       </>
                     ) : (
                       <>
                         Create Account
-                        <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
-                        </svg>
                       </>
                     )}
                   </span>
                 )}
               </Button>
             </form>
-
-            {/* Additional Info */}
-            {mode === 'login' && (
-              <div className="mt-6 text-center">
-                <button
-                  type="button"
-                  className="text-sm text-brand-600 dark:text-brand-400 hover:text-brand-700 dark:hover:text-brand-300 font-medium transition-colors"
-                >
-                  Forgot password?
-                </button>
-              </div>
-            )}
           </div>
 
           {/* Footer */}
