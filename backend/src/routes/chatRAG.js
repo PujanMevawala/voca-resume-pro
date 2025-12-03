@@ -1,0 +1,255 @@
+import axios from 'axios';
+import { authenticate } from '../middleware/auth.js';
+import { Resume } from '../models/Resume.js';
+import { embedText } from '../utils/embeddings.js';
+import { chunkText } from '../utils/chunking.js';
+
+const VECTOR_URL = process.env.VECTOR_URL || 'http://localhost:6333';
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
+const GROQ_API_KEY = process.env.GROQ_API_KEY || '';
+const LLM_URL = process.env.LLM_URL || 'http://localhost:11435';
+
+/**
+ * Call external LLM APIs (Gemini, Groq with open-source models) or local Ollama
+ */
+async function callLLM(model, prompt, systemPrompt) {
+    if (model.startsWith('gemini')) {
+        // Call Google Gemini API
+        const response = await axios.post(
+            `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`,
+            {
+                contents: [{
+                    parts: [{ text: systemPrompt + '\n\n' + prompt }]
+                }]
+            },
+            { timeout: 60000 }
+        );
+        return response.data.candidates[0].content.parts[0].text;
+    } else if (model.includes('llama') || model.includes('deepseek') || model.includes('qwen') || model.includes('mixtral')) {
+        // Call Groq API for open-source models (Llama, DeepSeek, Qwen, Mixtral)
+        const response = await axios.post(
+            'https://api.groq.com/openai/v1/chat/completions',
+            {
+                model: model,
+                messages: [
+                    { role: 'system', content: systemPrompt },
+                    { role: 'user', content: prompt }
+                ],
+                temperature: 0.7,
+                max_tokens: 2000
+            },
+            {
+                headers: {
+                    'Authorization': `Bearer ${GROQ_API_KEY}`,
+                    'Content-Type': 'application/json'
+                },
+                timeout: 60000
+            }
+        );
+        return response.data.choices[0].message.content;
+    } else {
+        // Call local Ollama
+        const response = await axios.post(`${LLM_URL}/generate`, {
+            model: model,
+            prompt: `${systemPrompt}\n\n${prompt}`,
+            stream: false,
+        }, { timeout: 60000 });
+        return response.data.response || response.data.text || '';
+    }
+}
+
+export async function registerChatRAGRoutes(app) {
+    /**
+     * Check RAG initialization status for a resume
+     * GET /api/chat/rag/status/:resumeId
+     */
+    app.get('/api/chat/rag/status/:resumeId', { preHandler: authenticate }, async (request, reply) => {
+        try {
+            const { resumeId } = request.params;
+            const resume = await Resume.findOne({ _id: resumeId, userId: request.user.userId || request.user.sub });
+
+            if (!resume) {
+                reply.code(404);
+                return { error: 'Resume not found' };
+            }
+
+            // Check if vectors exist in Qdrant
+            const collectionName = `resume_${resumeId}`;
+            try {
+                const response = await axios.get(`${VECTOR_URL}/collections/${collectionName}`);
+                const initialized = response.data.result.points_count > 0;
+                return { initialized, pointsCount: response.data.result.points_count };
+            } catch (err) {
+                return { initialized: false };
+            }
+        } catch (err) {
+            app.log.error('RAG status check error:', err);
+            reply.code(500);
+            return { error: err.message };
+        }
+    });
+
+    /**
+     * Initialize RAG system for a resume (chunking + embedding + vector storage)
+     * POST /api/chat/rag/initialize
+     */
+    app.post('/api/chat/rag/initialize', { preHandler: authenticate }, async (request, reply) => {
+        console.log('=== RAG INITIALIZE ENDPOINT HIT ===');
+        console.log('Body:', JSON.stringify(request.body));
+        console.log('User:', JSON.stringify(request.user));
+
+        try {
+            const { resumeId } = request.body;
+
+            if (!resumeId) {
+                console.log('ERROR: resumeId missing');
+                return reply.code(400).send({ error: 'resumeId is required' });
+            }
+            console.log('ResumeId:', resumeId);
+
+            const resume = await Resume.findOne({ _id: resumeId, userId: request.user.userId || request.user.sub });
+
+            if (!resume) {
+                return reply.code(404).send({ error: 'Resume not found' });
+            }
+
+            if (!resume.text || resume.text.trim().length === 0) {
+                return reply.code(400).send({ error: 'Resume text not available' });
+            }
+
+            app.log.info(`Starting RAG initialization for resume ${resumeId}, text length: ${resume.text.length}`);
+
+            // Step 1: Chunk the text
+            const chunks = chunkText(resume.text, 500, 50);
+            app.log.info(`Created ${chunks.length} chunks for resume ${resumeId}`);
+
+            // Step 2: Create embeddings for each chunk
+            app.log.info(`Creating embeddings for ${chunks.length} chunks...`);
+            const embeddings = [];
+            for (let i = 0; i < chunks.length; i++) {
+                try {
+                    const embedding = await embedText(chunks[i]);
+                    embeddings.push(embedding);
+                    if (i % 10 === 0) {
+                        app.log.info(`Processed ${i}/${chunks.length} embeddings`);
+                    }
+                } catch (embErr) {
+                    app.log.error(`Failed to embed chunk ${i}:`, embErr.message);
+                    throw embErr;
+                }
+            }
+            app.log.info(`All ${embeddings.length} embeddings created`);
+
+            // Step 3: Store in Qdrant vector database
+            const collectionName = `resume_${resumeId}`;
+
+            // Create collection if it doesn't exist
+            try {
+                await axios.put(`${VECTOR_URL}/collections/${collectionName}`, {
+                    vectors: {
+                        size: embeddings[0].length,
+                        distance: 'Cosine'
+                    }
+                });
+            } catch (err) {
+                // Collection might already exist
+                app.log.info('Collection already exists or error:', err.message);
+            }
+
+            // Insert points (vectors)
+            const points = chunks.map((chunk, idx) => ({
+                id: idx + 1,
+                vector: embeddings[idx],
+                payload: {
+                    text: chunk,
+                    resumeId: resumeId,
+                    chunkIndex: idx
+                }
+            }));
+
+            await axios.put(`${VECTOR_URL}/collections/${collectionName}/points`, {
+                points: points
+            });
+
+            app.log.info(`Stored ${points.length} vectors for resume ${resumeId}`);
+
+            return {
+                success: true,
+                chunksCreated: chunks.length,
+                vectorsStored: points.length
+            };
+        } catch (err) {
+            console.error('=== RAG INITIALIZATION ERROR ===');
+            console.error('Error message:', err.message);
+            console.error('Error stack:', err.stack);
+            console.error('ResumeId:', request.body.resumeId);
+            console.error('================================');
+            return reply.code(500).send({
+                error: err.message || 'RAG initialization failed',
+                details: err.stack
+            });
+        }
+    });
+
+    /**
+     * Query with RAG - convert query to embedding, search vectors, get context, ask LLM
+     * POST /api/chat/query
+     */
+    app.post('/api/chat/query', { preHandler: authenticate }, async (request, reply) => {
+        try {
+            const { resumeId, query, model = 'gemini-2.0-flash-exp' } = request.body;
+
+            if (!query || !resumeId) {
+                reply.code(400);
+                return { error: 'Query and resumeId are required' };
+            }
+
+            const resume = await Resume.findOne({ _id: resumeId, userId: request.user.userId || request.user.sub });
+            if (!resume) {
+                reply.code(404);
+                return { error: 'Resume not found' };
+            }
+
+            // Step 1: Embed the query
+            const queryEmbedding = await embedText(query);
+
+            // Step 2: Search for similar vectors in Qdrant
+            const collectionName = `resume_${resumeId}`;
+            const searchResponse = await axios.post(`${VECTOR_URL}/collections/${collectionName}/points/search`, {
+                vector: queryEmbedding,
+                limit: 5,
+                with_payload: true
+            });
+
+            const relevantChunks = searchResponse.data.result.map(r => r.payload.text);
+
+            // Step 3: Build context from relevant chunks
+            const context = relevantChunks.join('\n\n---\n\n');
+
+            // Step 4: Create prompt with context and query
+            const systemPrompt = `You are a helpful AI assistant specialized in resume analysis and career advice. 
+Answer the user's question based on the provided resume context. Be specific, helpful, and professional.`;
+
+            const prompt = `Resume Context:
+${context}
+
+User Question: ${query}
+
+Please provide a detailed and helpful answer based on the resume context above.`;
+
+            // Step 5: Call LLM with context
+            const response = await callLLM(model, prompt, systemPrompt);
+
+            return {
+                success: true,
+                response: response,
+                sources: relevantChunks.length,
+                context: relevantChunks
+            };
+        } catch (err) {
+            app.log.error('RAG query error:', err);
+            reply.code(500);
+            return { error: err.message };
+        }
+    });
+}

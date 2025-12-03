@@ -1,0 +1,28 @@
+{
+  "name": "workers",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "src/worker.js",
+  "scripts": {
+    "dev": "nodemon src/worker.js",
+    "start": "node src/worker.js",
+    "build": "echo 'No build step for workers'",
+    "test": "node -e 'console.log(\"workers tests placeholder\")'"
+  },
+  "dependencies": {
+    "@qdrant/js-client-rest": "^1.8.2",
+    "axios": "^1.7.7",
+    "bullmq": "^5.12.0",
+    "dotenv": "^17.2.3",
+    "form-data": "^4.0.0",
+    "ioredis": "^5.4.1",
+    "minio": "^8.0.1",
+    "mongoose": "^8.7.0",
+    "pdf-parse": "^1.1.1",
+    "mammoth": "^1.6.0",
+    "uuid": "^10.0.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.7"
+  }
+}
