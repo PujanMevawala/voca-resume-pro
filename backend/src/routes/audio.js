@@ -1,4 +1,16 @@
 import axios from 'axios';
+import textToSpeech from '@google-cloud/text-to-speech';
+import { promisify } from 'util';
+
+// Initialize Google Cloud TTS client (only if credentials are available)
+let ttsClient = null;
+try {
+    if (process.env.GOOGLE_CLOUD_PROJECT_ID || process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+        ttsClient = new textToSpeech.TextToSpeechClient();
+    }
+} catch (err) {
+    console.warn('Google Cloud TTS not configured, will use browser fallback');
+}
 
 export async function audioRoutes(app) {
     // TTS: Generate audio from text
@@ -6,7 +18,37 @@ export async function audioRoutes(app) {
         const { text, voice = 'en-US' } = req.body || {};
         if (!text) return reply.code(400).send({ error: 'text required' });
 
-        // If TTS_URL is configured with an API key, use it (OpenAI, ElevenLabs, etc.)
+        // Try Google Cloud TTS first (4M chars/month free)
+        if (ttsClient) {
+            try {
+                const request = {
+                    input: { text },
+                    voice: {
+                        languageCode: voice.includes('-') ? voice : 'en-US',
+                        name: voice.includes('-') ? `${voice}-Neural2-C` : 'en-US-Neural2-C',
+                        ssmlGender: 'NEUTRAL',
+                    },
+                    audioConfig: {
+                        audioEncoding: 'MP3',
+                        speakingRate: 1.0,
+                        pitch: 0,
+                    },
+                };
+
+                const [response] = await ttsClient.synthesizeSpeech(request);
+
+                if (response.audioContent) {
+                    reply.header('Content-Type', 'audio/mpeg');
+                    reply.header('X-TTS-Provider', 'google-cloud');
+                    return reply.send(Buffer.from(response.audioContent));
+                }
+            } catch (error) {
+                app.log.error('Google Cloud TTS error:', error.message);
+                // Fall through to next option
+            }
+        }
+
+        // Try OpenAI TTS as secondary option (if configured)
         if (process.env.TTS_URL && process.env.OPENAI_API_KEY) {
             try {
                 const response = await axios.post(
@@ -25,19 +67,20 @@ export async function audioRoutes(app) {
                     }
                 );
                 reply.header('Content-Type', 'audio/mpeg');
+                reply.header('X-TTS-Provider', 'openai');
                 return reply.send(response.data);
             } catch (e) {
-                app.log.error(e);
-                // Fall through to client-side fallback
+                app.log.error('OpenAI TTS error:', e.message);
+                // Fall through to browser fallback
             }
         }
 
-        // Return instruction for client-side Web Speech API fallback
+        // Fallback to client-side Web Speech API
         return reply.code(200).send({
             useBrowserTTS: true,
             text,
             voice,
-            message: 'Use browser Web Speech API for TTS. Set OPENAI_API_KEY for cloud TTS.',
+            message: 'Using browser Web Speech API. Configure Google Cloud TTS for better quality.',
         });
     });
 
@@ -46,7 +89,37 @@ export async function audioRoutes(app) {
         const { text, voice = 'en-US' } = req.body || {};
         if (!text) return reply.code(400).send({ error: 'text required' });
 
-        // If TTS_URL is configured with an API key, use it (OpenAI, ElevenLabs, etc.)
+        // Try Google Cloud TTS first
+        if (ttsClient) {
+            try {
+                const request = {
+                    input: { text },
+                    voice: {
+                        languageCode: voice.includes('-') ? voice : 'en-US',
+                        name: voice.includes('-') ? `${voice}-Neural2-C` : 'en-US-Neural2-C',
+                        ssmlGender: 'NEUTRAL',
+                    },
+                    audioConfig: {
+                        audioEncoding: 'MP3',
+                        speakingRate: 1.0,
+                        pitch: 0,
+                    },
+                };
+
+                const [response] = await ttsClient.synthesizeSpeech(request);
+
+                if (response.audioContent) {
+                    reply.header('Content-Type', 'audio/mpeg');
+                    reply.header('X-TTS-Provider', 'google-cloud');
+                    return reply.send(Buffer.from(response.audioContent));
+                }
+            } catch (error) {
+                app.log.error('Google Cloud TTS error:', error.message);
+                // Fall through to next option
+            }
+        }
+
+        // Try OpenAI TTS as secondary option
         if (process.env.TTS_URL && process.env.OPENAI_API_KEY) {
             try {
                 const response = await axios.post(
@@ -65,19 +138,20 @@ export async function audioRoutes(app) {
                     }
                 );
                 reply.header('Content-Type', 'audio/mpeg');
+                reply.header('X-TTS-Provider', 'openai');
                 return reply.send(response.data);
             } catch (e) {
-                app.log.error(e);
-                // Fall through to client-side fallback
+                app.log.error('OpenAI TTS error:', e.message);
+                // Fall through to browser fallback
             }
         }
 
-        // Return instruction for client-side Web Speech API fallback
+        // Fallback to client-side Web Speech API
         return reply.code(200).send({
             useBrowserTTS: true,
             text,
             voice,
-            message: 'Use browser Web Speech API for TTS. Set OPENAI_API_KEY for cloud TTS.',
+            message: 'Using browser Web Speech API. Configure Google Cloud TTS for better quality.',
         });
     });
 
