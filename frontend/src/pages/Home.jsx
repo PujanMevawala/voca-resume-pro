@@ -45,8 +45,7 @@ export default function Home({ token }) {
             </p>
             <p className="mt-4 text-lg text-slate-500 dark:text-slate-400 max-w-3xl mx-auto">
               <span className="px-3 py-1 rounded-full bg-green-500/10 text-green-700 dark:text-green-400 border border-green-500/20 text-sm font-medium">100% Open Source</span>
-              {' • '}
-              <span className="px-3 py-1 rounded-full bg-blue-500/10 text-blue-700 dark:text-blue-400 border border-blue-500/20 text-sm font-medium">Privacy First</span>
+              <span className="mx-2 px-3 py-1 rounded-full bg-blue-500/10 text-blue-700 dark:text-blue-400 border border-blue-500/20 text-sm font-medium">Privacy First</span>
             </p>
             <div className="mt-12 flex items-center justify-center gap-4 flex-wrap">
               <button

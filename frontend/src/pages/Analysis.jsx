@@ -287,7 +287,7 @@ export default function Analysis() {
             />
             
             <div className="flex items-center gap-4 mt-4 flex-wrap">
-              <select value={selectedModel} onChange={(e) =>  setSelectedModel(e.target.value)} className="px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-xs font-medium focus:ring-2 focus:ring-brand-500 focus:border-transparent transition-all" disabled={loading}>
+              <select value={selectedModel} onChange={(e) =>  setSelectedModel(e.target.value)} className="px-2 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-xs font-medium focus:ring-2 focus:ring-brand-500 focus:border-transparent transition-all" disabled={loading}>
                 {availableModels.map(model => ( 
                     <option key={model.id} value={model.id}>  
                         {model.name}  
@@ -298,7 +298,7 @@ export default function Analysis() {
               <Button 
                 onClick={runAnalysis} 
                 disabled={loading || !jobDescription.trim() || resumeInfo?.status !== 'ready'} 
-                size="md"
+                size="sm"
               >
                 {loading ? 'Analyzing...' : ' Analyze Resume'}
               </Button>
@@ -308,7 +308,7 @@ export default function Analysis() {
                   onClick={generateAudioSummary}
                   disabled={generatingAudio}
                   variant="secondary"
-                  size="md"
+                  size="sm"
                 >
                   {generatingAudio ? 'Generating...' : 'Generate Audio'}
                 </Button>
@@ -900,18 +900,6 @@ export default function Analysis() {
                 )}
               </div>
             </>
-          )}
-
-          {/* No Analysis State */}
-          {!analysis && !loading && (
-            <div className="glass rounded-2xl p-12 text-center border border-white/20">
-              <h3 className="text-xl font-semibold mb-2 text-slate-700 dark:text-slate-300">
-                Ready to Analyze
-              </h3>
-              <p className="text-slate-600 dark:text-slate-400">
-                Enter a job description above and click "Analyze Resume" to get started
-              </p>
-            </div>
           )}
         </div>
       </AnimatedPage>

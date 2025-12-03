@@ -41,11 +41,23 @@ export default function App() {
     navigate('/login', { replace: true });
   };
 
-  return (
-    <BrowserRouter>
-      <ToastProvider />
-      <Navbar token={token} onLogout={() => {}} />
-      <main className="pb-16">
+  const ConditionalNavbar = () => {
+    const location = useLocation();
+    const hideNavbarRoutes = ['/login'];
+    const shouldHideNavbar = hideNavbarRoutes.includes(location.pathname);
+    
+    if (shouldHideNavbar) return null;
+    return <Navbar token={token} onLogout={() => {}} />;
+  };
+
+  const AppContent = () => {
+    const location = useLocation();
+    const isLoginPage = location.pathname === '/login';
+    
+    return (
+      <>
+        <ConditionalNavbar />
+        <main className={isLoginPage ? '' : 'pb-16'}>
         <Routes>
           <Route path="/" element={<Home token={token} />} />
           <Route path="/login" element={<Login setToken={setToken} />} />
@@ -57,7 +69,15 @@ export default function App() {
           <Route path="/ask" element={<RequireAuth token={token}><Ask token={token} resumeId={resumeId} /></RequireAuth>} />
           <Route path="/logout" element={<LogoutHandler />} />
         </Routes>
-      </main>
+        </main>
+      </>
+    );
+  };
+
+  return (
+    <BrowserRouter>
+      <ToastProvider />
+      <AppContent />
     </BrowserRouter>
   );
 }
